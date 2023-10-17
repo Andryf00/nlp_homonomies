@@ -6,10 +6,14 @@ from transformers import AutoModel
 from typing import Tuple, List, Any, Dict
 from nltk.corpus import wordnet as wn
 
+universal_pos2wn_pos = {"NOUN": "n", "VERB": "v", "ADJ": "a", "ADV": "r", "n":"n", "v":"v", "a":"a", "r":"r"} #looks dumb but allows to generalize later without need for try except clauses or similar approaches
+
+
+
 def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict], List[List[List[str]]]]:
     sentences_s = [] 
     clusters =  []
-
+    dict = {}
     with open(path) as f:
         data = json.load(f)
     
@@ -20,7 +24,6 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
     non_correct_diff_lemmas = 0
     total_correct = 0
     total_non_correct = 0
-
     both_same = 0
     none_same = 0 
     correct_same = 0
@@ -29,20 +32,21 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
     for sentence_id, sentence_data in data.items():
         #instances in the dataset have 2 different structures, try-except is used to account for this, and process the data accordingly
         try:
-            candidate_clusters = list(sentence_data["candidate_clusters"].values())
+            candidate_clusters = sentence_data["candidate_clusters"]
             keys = list(sentence_data["candidate_clusters"].keys())
-            candidate_senses = list(sentence_data["wn_candidates"].values())
-            lemmas_total = sentence_data["lemmas"]
-            lemmas = []
-            for k in keys:
-                lemmas.append(lemmas_total[int(k)])
+            candidate_senses = sentence_data["wn_candidates"]
+            lemmas = sentence_data["lemmas"]
+            pos = sentence_data["pos_tags"]
         except:
-            candidate_clusters = [sentence_data["candidate_clusters"]]
-            candidate_senses = [sentence_data["wn_candidates"]]
-            lemmas = [sentence_data["lemma"]]
+            #creating a dummy dictionary so that I can generalize the following code to both types of dataset instances
+            keys = ["1"]
+            candidate_clusters = {"1":sentence_data["candidate_clusters"]}
+            candidate_senses = {"1":sentence_data["wn_candidates"]}
+            lemmas = {1:sentence_data["lemma"]}
+            pos = {1: sentence_data["pos"]}
         #candidate clusters is a list of lists, where the inner list is the list of candidate clusters for an instance
-        for i,current_clusters in enumerate(candidate_clusters):
-
+        for key in keys:
+            current_clusters = candidate_clusters[key]
             #we are only intrested in instances that have at least 2 candidate clusters
             if len(current_clusters)>1:
                 #to keep track of wheter the correct or wrong example have the same lemma,
@@ -52,7 +56,7 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                 for cluster in current_clusters:
                     succesfull = False
                     #for all the candidate senses for the current instance
-                    for cand in candidate_senses[i]:
+                    for cand in candidate_senses[key]:
                         #check if there are examples in the mapping
                         try: 
                             m = mapping[cand]
@@ -62,18 +66,20 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                         #if the current sense is part of the current cluster
                         if cand in [item for sublist in coarse_to_fine[cluster] for item in sublist]:
                             total_correct += len(m["example_tokens"])#keep track of how many correct examples there are
-                            succesfull = True #for cluster c we have at least one example available
-                            
+                            #succesfull = True #for cluster c we have at least one example available (OLD REQUIREMENT)
                             for lemma in m["lemma"]:
-                                if lemma == lemmas[i]:
+                                if lemma == lemmas[int(key)]:
                                     correct_same_lemmas += 1
                                     correct_lemmas_check[0] = True
+
+                                    #for this cluster we have at least one example with the same lemma available
+                                    succesfull = True
                                 else: correct_diff_lemmas += 1 
                             break
                         else: 
                             total_non_correct += len(m["example_tokens"])
                             for lemma in m["lemma"]:  
-                                if lemma == lemmas[i]:
+                                if lemma == lemmas[int(key)]:
                                     non_correct_same_lemmas += 1
                                     correct_lemmas_check[1] = True
                                 else: non_correct_diff_lemmas += 1 
@@ -85,19 +91,19 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                     data_to_append = {}
                     #instances in the dataset have 2 different structures, try-except is used to account for this, and process the data accordingly
                     try:
-                        key_instance_id, value = list(sentence_data["instance_ids"].items())[i]
-                        data_to_append["instance_ids"] = {key_instance_id: value}
-                        key, value = list(sentence_data["wn_candidates"].items())[i]
-                        data_to_append["wn_candidates"] =  {key: value}
-                        key, value = list(sentence_data["candidate_clusters"].items())[i]
-                        data_to_append["candidate_clusters"] =  {key: value}
-                        key, value = list(sentence_data["senses"].items())[i]
-                        data_to_append["senses"] =  {key: value}
-                        key, value = list(sentence_data["gold_clusters"].items())[i]
-                        data_to_append["gold_clusters"] =  {key: value}
+                        try:
+                            dict[sentence_id].append(sentence_data["instance_ids"][key])
+                        except: 
+                            dict[sentence_id] = [sentence_data["instance_ids"][key]]
+                        data_to_append["instance_ids"] = {key: sentence_data["instance_ids"][key]}
+                        data_to_append["wn_candidates"] =  {key: sentence_data["wn_candidates"][key]}
+                        data_to_append["candidate_clusters"] =  {key: sentence_data["candidate_clusters"][key]}
+                        data_to_append["senses"] =  {key: sentence_data["senses"][key]}
+                        data_to_append["gold_clusters"] =  {key: sentence_data["gold_clusters"][key]}
                         data_to_append["words"] =  sentence_data["words"]
                     
                     except Exception as e:
+                        dict[sentence_id] = []
                         key_instance_id = sentence_data["instance_ids"][0]
                         data_to_append["instance_ids"] = {key_instance_id: sentence_data["instance_ids"]}
                         data_to_append["candidate_clusters"] =  {key_instance_id: sentence_data["candidate_clusters"]}
@@ -127,6 +133,10 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
     print("Number of instances where neither the correct nor the wrong example contain the same lemma", none_same)
     print("Total correct examples:", total_correct)
     print("Total wrong examples:", total_non_correct)
+    with open("dev_dictionary_lemma.pkl", "wb") as f:
+            pickle.dump(dict, f)
+    print(dict)
+
     return sentences_s, clusters
 
 
@@ -145,28 +155,33 @@ def read_examples_mapping(path: str) -> Tuple[List[Dict], List[List[List[str]]]]
                         "cluster_name" : data["cluster_name"],
                         "example_tokens" : [data["example_tokens"]],
                         "instance_ids" : [data["instance_ids"]],
-                        "lemma" : [data["lemma"]]
+                        "lemma" : [data["lemma"]],
+                        "pos" : [data["pos"]]
                     }
                 else: 
                     mapping[data["synset_name"]]["instance_ids"].append(data["instance_ids"])
                     mapping[data["synset_name"]]["example_tokens"].append(data["example_tokens"])
                     mapping[data["synset_name"]]["lemma"].append(data["lemma"])
+                    mapping[data["synset_name"]]["pos"].append(data["pos"])
             except:
                 for idx in data["instance_ids"].keys():
-                    current_sense = data["senses"][idx][0]
-                    if current_sense not in mapping.keys():
-                        mapping[current_sense] = {
-                            "cluster_name" : data["gold_clusters"][idx],
-                            "example_tokens" : [data["words"]],
-                            "instance_ids" : [[int(idx)]],
-                            "lemma" : [data["lemmas"][int(idx)]]
-                        }
-                    else: 
-                        mapping[current_sense]["instance_ids"].append([int(idx)])
-                        mapping[current_sense]["example_tokens"].append(data["words"])
-                        mapping[current_sense]["lemma"].append(data["lemmas"][int(idx)])
+                    for current_sense in data["senses"][idx]:
+                        if current_sense not in mapping.keys():
+                            mapping[current_sense] = {
+                                "cluster_name" : data["gold_clusters"][idx],
+                                "example_tokens" : [data["words"]],
+                                "instance_ids" : [[int(idx)]],
+                                "lemma" : [data["lemmas"][int(idx)]],
+                                "pos" : [universal_pos2wn_pos[[data["pos_tags"][int(idx)]][0]]]
+                            }
+                        else: 
+                            mapping[current_sense]["instance_ids"].append([int(idx)])
+                            mapping[current_sense]["example_tokens"].append(data["words"])
+                            mapping[current_sense]["lemma"].append(data["lemmas"][int(idx)])
+                            mapping[current_sense]["pos"].append(universal_pos2wn_pos[data["pos_tags"][int(idx)]])
 
     return mapping
+
 
 
 
@@ -177,8 +192,9 @@ def embed_words(tokenizer, model, words, target_idx):
     It returns the contextualized embeddings of the first bpe of the word.
     '''
 
-    encoding = tokenizer(words, add_special_tokens=True, is_split_into_words=True)
-    tokens = torch.as_tensor(encoding["input_ids"]).reshape(1, -1)
+    encoding = tokenizer(words, add_special_tokens=True, is_split_into_words=True, return_tensors="pt")
+    tokens = encoding["input_ids"].reshape(1, -1)
+
     output_idx = encoding.word_to_tokens(target_idx[0]).start
     
     tokens = tokens.to("cuda")
@@ -186,11 +202,14 @@ def embed_words(tokenizer, model, words, target_idx):
     # embed the example and get the embeddings of the target word
     with torch.no_grad():
         output = model(tokens)
-        last_hidden_state = output.last_hidden_state.to("cpu")
-        embeddings = last_hidden_state[0, output_idx, :]
+        last_hidden_state = output.last_hidden_state
+        embeddings = last_hidden_state[0, output_idx, :].to("cpu")
         embeddings = embeddings.squeeze(0)
     
+    del output, last_hidden_state
+
     return embeddings
+
 
 
 def load_coarse_to_fine(path):
@@ -211,11 +230,10 @@ def evaluate(path_predictions, path_labels):
     with open(path_labels, "rb") as f:
         total_clusters=pickle.load( f)
     correct = 0
-    
+    print(len(predictions), len(total_clusters))
+    assert len(predictions)==len(total_clusters)
     for i, pred in enumerate(predictions):
-        if type(pred) == type([]):
-                pred = pred[0]
         if pred == total_clusters[i]:
                 correct+=1
 
-    print(correct,"/",i, "=", correct/i)
+    print(correct,"/",i+1, "=", correct/len(predictions))
