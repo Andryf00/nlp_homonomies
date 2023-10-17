@@ -11,7 +11,7 @@ from statistics import mean
 mapping = read_examples_mapping("new_split/train.json")
 
 coarse_to_fine = load_coarse_to_fine("data/cluster2fine_map.json")
-with open("prediction_pickles/prediction_min_bert-large-cased_dev_v2.pkl", "rb") as f:
+"""with open("prediction_pickles/prediction_min_bert-large-cased_dev_v2.pkl", "rb") as f:
        predictions=pickle.load( f)
 with open("prediction_pickles/total_clusters_bert-large-cased_dev_v2.pkl", "rb") as f:
        total_clusters=pickle.load( f)
@@ -23,7 +23,7 @@ for i, pred in enumerate(predictions):
               correct+=1
               print("giusto")
        else: idxs.append(i)
-fails={}
+fails={}"""
 for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-discriminator", "microsoft/deberta-v3-large"]:
        
        for dataset in ["dev", "test"]:
@@ -50,8 +50,8 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
               predictions_euc_min = []
 
               for i,(sample, gold_cluster) in enumerate(tqdm(zip(sentences, clusters))):
-                     if i not in idxs:
-                            continue
+                     """if i not in idxs:
+                            continue"""
                      print(i)
                      for idx in (list(sample["instance_ids"].keys())):
                             current_gold_cluster = gold_cluster[idx][0]
@@ -71,14 +71,28 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                                    #check if the current candidate sense has some examples available
                                    try:
                                           examples = mapping[sense]["example_tokens"]
+                                          lemmas = mapping[sense]["lemma"]
                                    except:
                                           continue
                                           
                                    distances = []
                                    distances_euclidean = []
 
-                                   for k,example in enumerate(examples):
+                                   """print("_______________________")
+                                   print(current_candidate_cluster)
+                                   print(sense)
+                                   print(sentence)"""
+                                   for k,(example, lemma) in enumerate(zip(examples,lemmas)):
                                           #for each example get the encoding of the target word
+                                          if lemma != sample["lemma"][str(idx)]:
+                                                 """print("---")
+                                                 print(example)
+                                                 print("---")
+                                                 print(lemma, sample["lemma"][str(idx)])
+"""
+                                                 #input("...")
+                                                 continue
+                                          else: pass#print("correct")
                                           target_idx = mapping[sense]["instance_ids"][k]
 
                                           encoding_example =  embed_words(tokenizer, model, example, target_idx)
@@ -100,9 +114,15 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                                                  prediction_euc_min = sense
                                                  predicted_example = example
                                                  min_distance_euclidean = distance_euclidean
+                                   #this additional check is needed, because it might be the case that for a sense there is no example that has the same lemma
+                                   #infact the requirement is that at least a sense accros the many associated to a cluster have at least an example that has the same lemma
+                                   if len(distances)==0:
+                                          mean = 0
+                                          mean_euclidean = float('inf')
+                                   else:
+                                          mean = sum(distances)/len(distances)
+                                          mean_euclidean = sum(distances_euclidean)/len(distances_euclidean)
                                    
-                                   mean = sum(distances)/len(distances)
-                                   mean_euclidean = sum(distances_euclidean)/len(distances_euclidean)
 
                                    means.append(mean)
                                    
@@ -139,11 +159,11 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                             #print("pred:", predicted, current_gold_cluster)
                             print("pred2:", predicted2, current_gold_cluster)
                             #fail cases of bert
-                            fail={}
+                            """fail={}
                             fail["instance"] = sample
                             fail["predicted"] = predicted2
                             fail["similarity"] = max_similarity
-                            fails[i] = fail
+                            fails[i] = fail"""
                             #print("pred3:", predicted3, current_gold_cluster)
                             #print("pred4:", predicted4, current_gold_cluster)
                             #print("DISTANCE(min/mean):", max_similarity, max_distance, "\n Sentence:", sentence, "\n Example:", predicted_example, "\n target", target )

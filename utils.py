@@ -101,6 +101,7 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                         data_to_append["senses"] =  {key: sentence_data["senses"][key]}
                         data_to_append["gold_clusters"] =  {key: sentence_data["gold_clusters"][key]}
                         data_to_append["words"] =  sentence_data["words"]
+                        data_to_append["lemma"] =  {key: lemmas[int(key)]}
                     
                     except Exception as e:
                         dict[sentence_id] = []
@@ -110,6 +111,8 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                         data_to_append["gold_clusters"] =  {key_instance_id: [sentence_data["cluster_name"]]}
                         data_to_append["words"] =  sentence_data["example_tokens"]
                         data_to_append["wn_candidates"] = {str(key_instance_id):sentence_data["wn_candidates"]}
+                        data_to_append["lemma"] =  {key_instance_id: lemmas[int(key)]}
+                        
 
                     sentences_s.append(data_to_append)
                     clusters.append(data_to_append["gold_clusters"])
