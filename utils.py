@@ -38,7 +38,7 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
             lemmas = sentence_data["lemmas"]
             pos = sentence_data["pos_tags"]
         except:
-            #creating a dummy dictionary so that I can generalize the following code to both types of dataset instances
+            #creating a dummy dictionary so that the following code can be generalized to both types of dataset instances
             keys = ["1"]
             candidate_clusters = {"1":sentence_data["candidate_clusters"]}
             candidate_senses = {"1":sentence_data["wn_candidates"]}
@@ -53,6 +53,7 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                 #  element 0 indicates that the correct example has the same lemma
                 #  element 1 indicates that the wrong example has the same lemma
                 correct_lemmas_check = [False, False] 
+
                 for cluster in current_clusters:
                     succesfull = False
                     #for all the candidate senses for the current instance
@@ -63,6 +64,7 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                         except:
                             #no examples, succesfull remains False and we move on
                             continue
+                        
                         #if the current sense is part of the current cluster
                         if cand in [item for sublist in coarse_to_fine[cluster] for item in sublist]:
                             total_correct += len(m["example_tokens"])#keep track of how many correct examples there are
@@ -111,7 +113,7 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
                         data_to_append["gold_clusters"] =  {key_instance_id: [sentence_data["cluster_name"]]}
                         data_to_append["words"] =  sentence_data["example_tokens"]
                         data_to_append["wn_candidates"] = {str(key_instance_id):sentence_data["wn_candidates"]}
-                        data_to_append["lemma"] =  {key_instance_id: lemmas[int(key)]}
+                        data_to_append["lemma"] =  {str(key_instance_id): lemmas[int(key)]}
                         
 
                     sentences_s.append(data_to_append)
@@ -138,7 +140,6 @@ def read_dataset_filtered(path: str, mapping, coarse_to_fine) -> Tuple[List[Dict
     print("Total wrong examples:", total_non_correct)
     with open("dev_dictionary_lemma.pkl", "wb") as f:
             pickle.dump(dict, f)
-    print(dict)
 
     return sentences_s, clusters
 

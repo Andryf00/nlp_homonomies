@@ -11,22 +11,11 @@ from statistics import mean
 mapping = read_examples_mapping("new_split/train.json")
 
 coarse_to_fine = load_coarse_to_fine("data/cluster2fine_map.json")
-"""with open("prediction_pickles/prediction_min_bert-large-cased_dev_v2.pkl", "rb") as f:
-       predictions=pickle.load( f)
-with open("prediction_pickles/total_clusters_bert-large-cased_dev_v2.pkl", "rb") as f:
-       total_clusters=pickle.load( f)
-correct = 0
-idxs=[]
-for i, pred in enumerate(predictions):
-       print(i, pred, total_clusters[i])
-       if pred == total_clusters[i]:
-              correct+=1
-              print("giusto")
-       else: idxs.append(i)
-fails={}"""
+
+fails={}
 for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-discriminator", "microsoft/deberta-v3-large"]:
        
-       for dataset in ["dev", "test"]:
+       for dataset in ["test", "dev"]:
               add_prefix_bool = checkpoint == "roberta-large"
               tokenizer = AutoTokenizer.from_pretrained(checkpoint, use_fast=True, add_prefix_space=add_prefix_bool)
               model = AutoModel.from_pretrained(checkpoint).to("cuda")
@@ -37,6 +26,7 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
               #remove the / in the checkpoint name to avoid problems when saving the pickle file 
               if '/' in checkpoint:
                      checkpoint_split = checkpoint.split('/')[1]
+              else: checkpoint_split = checkpoint
               print(checkpoint)
 
               results = {}
@@ -50,9 +40,6 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
               predictions_euc_min = []
 
               for i,(sample, gold_cluster) in enumerate(tqdm(zip(sentences, clusters))):
-                     """if i not in idxs:
-                            continue"""
-                     print(i)
                      for idx in (list(sample["instance_ids"].keys())):
                             current_gold_cluster = gold_cluster[idx][0]
                             current_candidate_cluster = sample["candidate_clusters"][idx]
@@ -63,10 +50,10 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                             means = []
                             max_mean_similarity = -1.1
                             max_similarity = -1.1
+                            max_similarity_gold = -1.1
                             min_distance_euclidean = float("inf")
                             min_mean_euclidean = float("inf")
 
-                            failure = False
                             for sense in sample["wn_candidates"][str(idx)]:
                                    #check if the current candidate sense has some examples available
                                    try:
@@ -77,22 +64,13 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                                           
                                    distances = []
                                    distances_euclidean = []
-
-                                   """print("_______________________")
-                                   print(current_candidate_cluster)
-                                   print(sense)
-                                   print(sentence)"""
+                                   
                                    for k,(example, lemma) in enumerate(zip(examples,lemmas)):
                                           #for each example get the encoding of the target word
+                                          #consider only the examples where the target has the same lemma as in the instance
                                           if lemma != sample["lemma"][str(idx)]:
-                                                 """print("---")
-                                                 print(example)
-                                                 print("---")
-                                                 print(lemma, sample["lemma"][str(idx)])
-"""
-                                                 #input("...")
                                                  continue
-                                          else: pass#print("correct")
+                                          else: pass
                                           target_idx = mapping[sense]["instance_ids"][k]
 
                                           encoding_example =  embed_words(tokenizer, model, example, target_idx)
@@ -104,7 +82,11 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                                           distances.append(distance)      
                                           distances_euclidean.append(distance_euclidean)
 
-                                          
+                                          if sense in [item for sublist in coarse_to_fine[current_gold_cluster] for item in sublist]:
+                                                 distance_gold = distance
+                                                 if distance_gold > max_similarity_gold:
+                                                        max_similarity_gold = distance_gold
+
                                           
                                           if distance > max_similarity:
                                                  prediction_min = sense
@@ -114,8 +96,9 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                                                  prediction_euc_min = sense
                                                  predicted_example = example
                                                  min_distance_euclidean = distance_euclidean
+
                                    #this additional check is needed, because it might be the case that for a sense there is no example that has the same lemma
-                                   #infact the requirement is that at least a sense accros the many associated to a cluster have at least an example that has the same lemma
+                                   #infact the requirement is that at least a sense accros the many associated to a cluster has at least an example that has the same lemma
                                    if len(distances)==0:
                                           mean = 0
                                           mean_euclidean = float('inf')
@@ -157,54 +140,38 @@ for checkpoint in ["bert-large-cased","roberta-large", "google/electra-large-dis
                             
                                           
                             #print("pred:", predicted, current_gold_cluster)
-                            print("pred2:", predicted2, current_gold_cluster)
+                            print("\n pred2:", predicted2, current_gold_cluster)
+                            print(predicted2==current_gold_cluster)
                             #fail cases of bert
-                            """fail={}
-                            fail["instance"] = sample
-                            fail["predicted"] = predicted2
-                            fail["similarity"] = max_similarity
-                            fails[i] = fail"""
-                            #print("pred3:", predicted3, current_gold_cluster)
-                            #print("pred4:", predicted4, current_gold_cluster)
-                            #print("DISTANCE(min/mean):", max_similarity, max_distance, "\n Sentence:", sentence, "\n Example:", predicted_example, "\n target", target )
+                                          
+                            if checkpoint == "bert-large-cased" and dataset=="test":
+                                   fail={}
+                                   fail["instance"] = sample
+                                   fail["predicted"] = predicted2
+                                   fail["similarity"] = max_similarity
+                                   fail["similarity_gold"] = max_similarity_gold
+                                   fail["correct"] = predicted2 == current_gold_cluster
+                                   fails[i] = fail
+              if checkpoint == "bert-large-cased" and dataset=="test":
+                     file_name = "fails.json"
+                     import json
+                     # Using json.dump() to save the dictionary as a JSON file
+                     with open(file_name, 'w') as json_file:
+                            json.dump(fails, json_file, indent=4)
+                     with open("fails.pkl", "wb") as f:
+                            pickle.dump(fails, f)
 
-                            #input("...")
-              file_name = "fails.json"
-              import json
-              # Using json.dump() to save the dictionary as a JSON file
-              with open(file_name, 'w') as json_file:
-                     json.dump(fails, json_file, indent=4)
-              with open("fails.pkl", "wb") as f:
-                     pickle.dump(fails, f)
-
-              with open("prediction_pickles/predictions_mean_"+checkpoint_split+"_"+dataset+"_v2.pkl", "wb") as f:
+              with open("prediction_pickles/predictions_mean_"+checkpoint_split+"_"+dataset+".pkl", "wb") as f:
                      pickle.dump(predictions_mean, f)
-              with open("prediction_pickles/prediction_min_"+checkpoint_split+"_"+dataset+"_v2.pkl", "wb") as f:
+              with open("prediction_pickles/prediction_min_"+checkpoint_split+"_"+dataset+".pkl", "wb") as f:
                      pickle.dump(predictions_min, f)
-              with open("prediction_pickles/total_clusters_"+checkpoint_split+"_"+dataset+"_v2.pkl", "wb") as f:
+              with open("prediction_pickles/total_clusters_"+checkpoint_split+"_"+dataset+".pkl", "wb") as f:
                      pickle.dump(total_clusters, f)
-              with open("prediction_pickles/prediction_euc_mean_"+checkpoint_split+"_"+dataset+"_v2.pkl", "wb") as f:
+              with open("prediction_pickles/prediction_euc_mean_"+checkpoint_split+"_"+dataset+".pkl", "wb") as f:
                      pickle.dump(predictions_euc_mean, f)
-              with open("prediction_pickles/prediction_euc_min_"+checkpoint_split+"_"+dataset+"_v2.pkl", "wb") as f:
+              with open("prediction_pickles/prediction_euc_min_"+checkpoint_split+"_"+dataset+".pkl", "wb") as f:
                      pickle.dump(predictions_euc_min, f)
 
-
-              with open("prediction_pickles/prediction_min_"+checkpoint_split+"_"+dataset+"_v2.pkl", "rb") as f:
-                     predictions=pickle.load( f)
-              with open("prediction_pickles/total_clusters_"+checkpoint_split+"_"+dataset+"_v2.pkl", "rb") as f:
-                     total_clusters=pickle.load( f)
-              correct = 0
-              for i, pred in enumerate(predictions):
-                     print(i, pred, total_clusters[i])
-                     if type(pred) == type([]):
-                            pred = pred[0]
-                            print("fixed pred", pred)
-                     if pred == total_clusters[i]:
-                            correct+=1
-                            print("giusto")
-
-              print(correct, i)
-              print(correct/i)
        
 
               
